@@ -12,13 +12,14 @@
 // limitations under the License.
 
 using ArcGISEarth.AutoAPI.Utils;
-using Esri.ArcGISEarth.WCFNamedPipeIPC;
+//using Esri.ArcGISEarth.WCFNamedPipeIPC;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using System.Threading.Tasks;
+using Esri.ArcGISEarth.RESTAutomation;
 
 namespace ArcGISEarth.WCFNamedPipeIPC
 {
@@ -31,6 +32,8 @@ namespace ArcGISEarth.WCFNamedPipeIPC
     {
         public const string c_processName = "ArcGISEarth";
         public const string cBasePipeAddress = "net.pipe://localhost/arcgisearth";
+        public const string cNetTcpAddress = "net.tcp://localhost:8803/nettcp";
+        private readonly static string _basicHttpEndPointAddress = @"http://localhost:8080/basichttp";
         public const string cNeedConnect = "Please start earth then connect to it";
         public const string cSuccess = "Success";
         public const string cFailed = "Failed";
@@ -38,8 +41,9 @@ namespace ArcGISEarth.WCFNamedPipeIPC
         public const string cConnectError = "Something wrong with the namedpipe communication!";
         public const string cWaitAddingLayer = "Waiting for the result of adding layer";
 
-        private IEarthNamedpipeService _channel = null;
-        private ChannelFactory<IEarthNamedpipeService> _factory = null;
+        private IRESTAutomationService _channel = null;
+        //private IEchoService _echo_channel = null;
+        private ChannelFactory<IRESTAutomationService> _factory = null;
 
         static public string ConstructLayerInformationJson(string uri, string lyrType = null, string target = null)
         {
@@ -191,7 +195,40 @@ namespace ArcGISEarth.WCFNamedPipeIPC
             return false;
         }
 
-        public IEarthNamedpipeService CreateChannel(string address)
+        public IRESTAutomationService CreateChannelHttp(string address)
+        {
+            var factory = new ChannelFactory<IRESTAutomationService>(new BasicHttpBinding(), new EndpointAddress(address));
+            factory.Open();
+            var channel = factory.CreateChannel();
+            return channel;
+        }
+
+        public IRESTAutomationService CreateChannel(string address)
+        {
+            var factory = new ChannelFactory<IRESTAutomationService>(
+                new NetTcpBinding(), 
+                new EndpointAddress(address));
+            factory.Open();
+            var channel = factory.CreateChannel();
+            return channel;
+        }
+
+        public IEchoService CreateEchoService(string address)
+        {
+            var factory = new ChannelFactory<IEchoService>(
+                new NetTcpBinding(), 
+                new EndpointAddress(address));
+            factory.Open();
+            var channel = factory.CreateChannel();
+            ((IClientChannel)channel).Open();
+            Console.WriteLine("net.tcp Echo(\"Hello\") => " + channel.Echo("Hello"));
+            ((IClientChannel)channel).Close();
+            factory.Close();
+            return channel;
+        }
+
+
+        public IRESTAutomationService CreateChannelNamedPipe(string address)
         {
             try
             {
@@ -202,12 +239,12 @@ namespace ArcGISEarth.WCFNamedPipeIPC
                 binding.ReceiveTimeout = TimeSpan.MaxValue;
 
                 ServiceEndpoint se = new ServiceEndpoint(
-                    ContractDescription.GetContract(typeof(IEarthNamedpipeService)),
+                    ContractDescription.GetContract(typeof(IRESTAutomationService)),
                     binding,
                     new EndpointAddress(address));
 
-                _factory = new ChannelFactory<IEarthNamedpipeService>(se);
-                IEarthNamedpipeService channel = _factory.CreateChannel();
+                _factory = new ChannelFactory<IRESTAutomationService>(se);
+                IRESTAutomationService channel = _factory.CreateChannel();
                 return channel;
             }
             catch
@@ -236,12 +273,17 @@ namespace ArcGISEarth.WCFNamedPipeIPC
                     address = cBasePipeAddress;
                 }
 
+                address = cNetTcpAddress;
+
                 if (!String.IsNullOrEmpty(address))
                 {
+                    //CreateEchoService(address);
                     _channel = CreateChannel(address);
 
                     // call a function to test consistency of contract file.
+                    ((IClientChannel)_channel).Open();
                     string test = _channel.GetCameraJson();
+
 
                     if (_channel != null)
                     {
@@ -254,8 +296,9 @@ namespace ArcGISEarth.WCFNamedPipeIPC
                 }
                 return cFailed;
             }
-            catch
+            catch(Exception ex)
             {
+                Console.WriteLine(ex.Message);
                 _channel = null;
                 return cFailed;
             }
@@ -339,7 +382,7 @@ namespace ArcGISEarth.WCFNamedPipeIPC
 
             try
             {
-                _channel.RemoveLayer(json);
+               _channel.RemoveLayer(json);
             }
             catch (FaultException<EarthNamedpipeFault> ex)
             {
@@ -390,6 +433,7 @@ namespace ArcGISEarth.WCFNamedPipeIPC
                 {
                     return cSuccess;
                 }
+
             }
             catch (Exception ex)
             {
@@ -415,10 +459,14 @@ namespace ArcGISEarth.WCFNamedPipeIPC
 
             try
             {
-                if (_channel.SetCamera(json))
+                //((IClientChannel)_channel).Open();
+                bool bSuccess = _channel.SetCamera(json);
+                //((IClientChannel)_channel).Close();
+                if (bSuccess)
                 {
                     return cSuccess;
                 }
+
             }
             catch (Exception ex)
             {
@@ -444,7 +492,10 @@ namespace ArcGISEarth.WCFNamedPipeIPC
 
             try
             {
-                return _channel.GetCameraJson();
+                //((IClientChannel)_channel).Open();
+                string cameraString = _channel.GetCameraJson();
+                //((IClientChannel)_channel).Close();
+                return cameraString;
             }
             catch (Exception ex)
             {

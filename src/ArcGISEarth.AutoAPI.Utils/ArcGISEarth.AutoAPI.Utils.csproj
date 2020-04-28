@@ -45,6 +45,7 @@
   <ItemGroup>
     <Compile Include="EarthNamedpipeAPIUtils.cs" />
     <Compile Include="IEarthNamedpipeService.cs" />
+    <Compile Include="IEarthWCFRestfulService.cs" />
     <Compile Include="ProcessUtils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
